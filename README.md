@@ -1,3 +1,7 @@
+I borrowed this from Anthropic and added in app.py which is my code for you to use.
+Just type python app.py  followed by your request as described in my video called "Claude 3 Functions with code" on youtube.com under Eoin Tolster
+
+
 # anthropic-tools
 A repo for using tools/function calling with Anthropic models.
 > This SDK is Currently in Alpha. We promise no ongoing support. It is not intended for production use.
