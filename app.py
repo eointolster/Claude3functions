@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from pydub import AudioSegment
 from pydub.playback import play
+import winsound
 
 # 1. Define the Tools
 class AdditionTool(BaseTool):
@@ -97,14 +98,11 @@ class PlayAudioFileTool(BaseTool):
     """Plays an audio file (.wav or .mp3)."""
     def use_tool(self, file_path):
         print(f"Playing audio file: {file_path}")
-        
+       
         try:
-            # Load the audio file
-            audio_segment = AudioSegment.from_file(file_path)
-            
-            # Play the audio file
-            play(audio_segment)
-            
+            # Play the audio file using winsound
+            winsound.PlaySound(file_path, winsound.SND_FILENAME)
+           
             return f"Audio file played successfully: {file_path}"
         except Exception as e:
             return f"Error playing audio file: {str(e)}"
