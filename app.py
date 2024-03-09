@@ -9,6 +9,12 @@ import subprocess
 from pydub import AudioSegment
 from pydub.playback import play
 import winsound
+import numpy as np
+import wave
+import struct
+
+# Get the current working directory
+current_dir = os.getcwd()
 
 # 1. Define the Tools
 class AdditionTool(BaseTool):
@@ -20,6 +26,8 @@ class AdditionTool(BaseTool):
 class FileWriteTool(BaseTool):
     """Writes content to a file."""
     def use_tool(self, file_path, content):
+        # Modify the file path to be relative to the current directory
+        file_path = os.path.join(current_dir, file_path)
         print(f"Writing to file: {file_path}")
         with open(file_path, 'w') as file:
             file.write(content)
@@ -28,6 +36,8 @@ class FileWriteTool(BaseTool):
 class FileReadTool(BaseTool):
     """Reads content from a file."""
     def use_tool(self, file_path):
+        # Modify the file path to be relative to the current directory
+        file_path = os.path.join(current_dir, file_path)
         print(f"Reading from file: {file_path}")
         with open(file_path, 'r') as file:
             content = file.read()
@@ -36,6 +46,8 @@ class FileReadTool(BaseTool):
 class CreateFolderTool(BaseTool):
     """Creates a new folder at the specified path."""
     def use_tool(self, folder_path):
+        # Modify the folder path to be relative to the current directory
+        folder_path = os.path.join(current_dir, folder_path)
         print(f"Creating folder: {folder_path}")
         os.makedirs(folder_path, exist_ok=True)
         return f"Folder created: {folder_path}"
@@ -43,6 +55,9 @@ class CreateFolderTool(BaseTool):
 class FileCopyTool(BaseTool):
     """Copies a file or folder to another location."""
     def use_tool(self, source_path, destination_path):
+        # Modify the source and destination paths to be relative to the current directory
+        source_path = os.path.join(current_dir, source_path)
+        destination_path = os.path.join(current_dir, destination_path)
         print(f"Copying from {source_path} to {destination_path}")
         shutil.copy(source_path, destination_path)
         return f"File/folder copied from {source_path} to {destination_path}"
@@ -83,29 +98,90 @@ class CMDInteractionTool(BaseTool):
 
 class CreateAudioFileTool(BaseTool):
     """Creates an audio file (.wav or .mp3) with the specified content."""
-    def use_tool(self, file_path, content, format="wav"):
+    def use_tool(self, file_path, content_file_path, format="wav"):
         print(f"Creating audio file: {file_path}")
-        
-        # Create an AudioSegment from the content
-        audio_segment = AudioSegment.from_file(content, format=format)
-        
-        # Export the AudioSegment to the specified file path
-        audio_segment.export(file_path, format=format)
-        
-        return f"Audio file created: {file_path}"
+       
+        try:
+            # Create an AudioSegment from the content file path
+            audio_segment = AudioSegment.from_file(content_file_path, format=format)
+           
+            # Export the AudioSegment to the specified file path
+            audio_segment.export(file_path, format=format)
+           
+            return f"Audio file created: {file_path}"
+        except FileNotFoundError as e:
+            error_message = f"Error creating audio file: Content file not found: {content_file_path}"
+            print(error_message)
+            return error_message
+        except Exception as e:
+            error_message = f"Error creating audio file: {str(e)}"
+            print(error_message)
+            return error_message
     
 class PlayAudioFileTool(BaseTool):
     """Plays an audio file (.wav or .mp3)."""
     def use_tool(self, file_path):
         print(f"Playing audio file: {file_path}")
-       
+        
         try:
             # Play the audio file using winsound
             winsound.PlaySound(file_path, winsound.SND_FILENAME)
-           
+            
             return f"Audio file played successfully: {file_path}"
         except Exception as e:
             return f"Error playing audio file: {str(e)}"
+
+class PythonFileReviewTool(BaseTool):
+    """Reviews and modifies a Python file for issues."""
+    def use_tool(self, file_path):
+        # Modify the file path to be relative to the current directory
+        file_path = os.path.join(current_dir, file_path)
+        print(f"Reviewing Python file: {file_path}")
+        
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+            
+            # Perform review and modifications here
+            modified_content = self.review_and_modify(content)
+            
+            with open(file_path, 'w') as file:
+                file.write(modified_content)
+            
+            return f"Python file reviewed and modified: {file_path}"
+        except FileNotFoundError:
+            return f"Python file not found: {file_path}"
+        except Exception as e:
+            return f"Error reviewing Python file: {str(e)}"
+    
+    def review_and_modify(self, content):
+        # Implement your review and modification logic here
+        # For example, you can check for specific issues or patterns and modify the content accordingly
+        # This is just a placeholder example
+        modified_content = content.replace('issue', 'fixed')
+        return modified_content
+
+class PipInstallTool(BaseTool):
+    """Installs Python packages using pip."""
+    def use_tool(self, package_name):
+        print(f"Installing package: {package_name}")
+        try:
+            subprocess.run(["pip", "install", package_name], check=True)
+            return f"Package '{package_name}' installed successfully."
+        except subprocess.CalledProcessError as e:
+            return f"Error installing package '{package_name}': {str(e)}"
+        
+class SolutionVerificationTool(BaseTool):
+    """Verifies if the solution requested by the user was successful."""
+    def use_tool(self, user_request, solution_output):
+        print(f"Verifying solution for user request: {user_request}")
+        
+        if "error" in solution_output.lower():
+            suggestion = "It seems there was an error in the solution. Please review the Python script for any issues or missing dependencies. You may need to install additional packages using pip."
+            return f"Solution verification failed. Suggestion: {suggestion}"
+        else:
+            return "Solution verification passed. The solution appears to be successful."
+        
 
 # 2. Tool Descriptions
 addition_tool_name = "perform_addition"
@@ -192,7 +268,7 @@ create_audio_file_tool_description = """Creates an audio file (.wav or .mp3) wit
 Use this tool to create audio files as requested by the user."""
 create_audio_file_tool_parameters = [
     {"name": "file_path", "type": "str", "description": "The path of the audio file to create."},
-    {"name": "content", "type": "str", "description": "The path of the audio content file to use."},
+    {"name": "content_file_path", "type": "str", "description": "The path of the audio content file to use."},
     {"name": "format", "type": "str", "description": "The format of the audio file (default: 'wav')."}
 ]
 create_audio_file_tool = CreateAudioFileTool(create_audio_file_tool_name, create_audio_file_tool_description, create_audio_file_tool_parameters)
@@ -205,10 +281,36 @@ play_audio_file_tool_parameters = [
 ]
 play_audio_file_tool = PlayAudioFileTool(play_audio_file_tool_name, play_audio_file_tool_description, play_audio_file_tool_parameters)
 ###########################################
+# Add the new tool to the tool descriptions
+python_file_review_tool_name = "python_file_review"
+python_file_review_tool_description = """Reviews and modifies a Python file for issues.
+Use this tool to review and modify Python files after they have been created."""
+python_file_review_tool_parameters = [
+    {"name": "file_path", "type": "str", "description": "The path of the Python file to review and modify."}
+]
+python_file_review_tool = PythonFileReviewTool(python_file_review_tool_name, python_file_review_tool_description, python_file_review_tool_parameters)
+###########################################
+pip_install_tool_name = "pip_install"
+pip_install_tool_description = """Installs Python packages using pip.
+Use this tool to install any required Python packages."""
+pip_install_tool_parameters = [
+    {"name": "package_name", "type": "str", "description": "The name of the Python package to install."}
+]
+pip_install_tool = PipInstallTool(pip_install_tool_name, pip_install_tool_description, pip_install_tool_parameters)
+###########################################
+solution_verification_tool_name = "solution_verification"
+solution_verification_tool_description = """Verifies if the solution requested by the user was successful.
+Use this tool to check if the solution provided meets the user's request and suggest improvements if needed."""
+solution_verification_tool_parameters = [
+    {"name": "user_request", "type": "str", "description": "The original user request or query."},
+    {"name": "solution_output", "type": "str", "description": "The output or response generated as the solution."}
+]
+solution_verification_tool = SolutionVerificationTool(solution_verification_tool_name, solution_verification_tool_description, solution_verification_tool_parameters)
+###########################################
 
 #3. Assign Tools and Ask Claude
-tool_user = ToolUser([addition_tool, search_tool, file_write_tool, file_read_tool, create_folder_tool, file_copy_tool, start_cmd_tool, miniconda_start_tool, cmd_interaction_tool, create_audio_file_tool, play_audio_file_tool])
-
+tool_user = ToolUser([addition_tool, search_tool, file_write_tool, file_read_tool, create_folder_tool, file_copy_tool, start_cmd_tool, miniconda_start_tool, cmd_interaction_tool, 
+                      create_audio_file_tool, play_audio_file_tool, python_file_review_tool, pip_install_tool, solution_verification_tool])
 
 if len(sys.argv) > 1:
     query = ' '.join(sys.argv[1:])
@@ -221,6 +323,18 @@ if len(sys.argv) > 1:
     try:
         response = tool_user.use_tools(messages, execution_mode="automatic")
         print(response)
+       
+        verification_result = tool_user.use_tools([
+            {
+                "role": "user",
+                "content": f"Verify the solution for the user request: {query}"
+            },
+            {
+                "role": "assistant",
+                "content": response
+            }
+        ], execution_mode="automatic")
+        print(verification_result)
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 else:
@@ -236,3 +350,4 @@ else:
     print("- python app.py run the command 'dir' in a new Command Prompt window")
     print("- python app.py create an audio file named example.wav with content from audio_content.wav")    
     print("- python app.py play the audio file example.wav")
+    print("- python app.py install the Python package 'requests'")
