@@ -4,6 +4,7 @@ from pydub import AudioSegment
 from tool_use_package.tools.base_tool import BaseTool
 from tool_use_package.tool_user import ToolUser
 from tool_use_package.tools.search.brave_search_tool import BraveSearchTool
+import anthropic
 import shutil
 import subprocess
 from pydub import AudioSegment
@@ -12,6 +13,44 @@ import winsound
 import numpy as np
 import wave
 import struct
+from dotenv import load_dotenv
+import requests
+import datetime, zoneinfo
+import pygame
+load_dotenv()
+
+brave_api_key = os.getenv("BRAVE_API_KEY")
+if brave_api_key is None:
+    print("BRAVE_API_KEY environment variable not found.")
+else:
+    print("BRAVE_API_KEY is set.")
+
+claude_api_key = os.getenv("ANTHROPIC_API_KEY")
+client = anthropic.Client(api_key=claude_api_key)
+
+elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+
+
+# Define the function to directly test the Brave API
+def direct_api_test():
+    # Retrieve the API key from environment variables
+    brave_api_key = os.getenv("BRAVE_API_KEY")
+    if brave_api_key is None:
+        print("BRAVE_API_KEY environment variable not found.")
+        return
+    
+    print("BRAVE_API_KEY is set. Proceeding with API test.")
+    
+    # Set up the headers with your API key
+    headers = {"Accept": "application/json", "X-Subscription-Token": brave_api_key}
+    
+    # Make the API request
+    response = requests.get("https://api.search.brave.com/res/v1/web/search", params={"q": "test"}, headers=headers)
+    
+    # Print out the response status code and JSON content
+    print(response.status_code, response.json())
+
+direct_api_test()
 
 # Get the current working directory
 current_dir = os.getcwd()
@@ -122,12 +161,18 @@ class PlayAudioFileTool(BaseTool):
     """Plays an audio file (.wav or .mp3)."""
     def use_tool(self, file_path):
         print(f"Playing audio file: {file_path}")
-        
+       
         try:
-            # Play the audio file using winsound
-            winsound.PlaySound(file_path, winsound.SND_FILENAME)
-            
+            pygame.mixer.init()
+            pygame.mixer.music.load(file_path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                pygame.time.Clock().tick(10)
+            pygame.mixer.quit()
+           
             return f"Audio file played successfully: {file_path}"
+        except FileNotFoundError:
+            return f"Audio file not found: {file_path}"
         except Exception as e:
             return f"Error playing audio file: {str(e)}"
 
@@ -182,6 +227,47 @@ class SolutionVerificationTool(BaseTool):
         else:
             return "Solution verification passed. The solution appears to be successful."
         
+class TimeOfDayTool(BaseTool):
+    """Tool to get the current time of day."""
+    def use_tool(self, time_zone):
+        # Get the current time
+        now = datetime.datetime.now()
+
+        # Convert to the specified time zone
+        tz = zoneinfo.ZoneInfo(time_zone)
+        localized_time = now.astimezone(tz)
+
+        return localized_time.strftime("%H:%M:%S")
+
+class ElevenLabsTTSTool(BaseTool):
+    """Converts text to speech using ElevenLabs API."""
+    def use_tool(self, text):
+        print(f"Converting text to speech: {text}")
+        try:                                                    
+            url = "https://api.elevenlabs.io/v1/text-to-speech/5wx2oC4WfHEWM543YUAK/stream"
+            querystring = {"optimize_streaming_latency":"1"}
+            headers = {
+                "xi-api-key": "5c924f93c3f3a228a6da75ab00f73bc2",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "voice_settings": {
+                    "stability": 1,
+                    "similarity_boost": 1
+                },
+                "text": text,
+                "model_id": "eleven_multilingual_v2"
+            }
+            response = requests.request("POST", url, json=payload, headers=headers)
+            
+            if response.status_code == 200:
+                with open("output.mp3", "wb") as f:
+                    f.write(response.content)
+                return "Text-to-speech conversion completed successfully. Audio saved as output.mp3."
+            else:
+                return f"Error converting text to speech: {response.text}"
+        except Exception as e:
+            return f"Error converting text to speech: {str(e)}"
 
 # 2. Tool Descriptions
 addition_tool_name = "perform_addition"
@@ -307,10 +393,26 @@ solution_verification_tool_parameters = [
 ]
 solution_verification_tool = SolutionVerificationTool(solution_verification_tool_name, solution_verification_tool_description, solution_verification_tool_parameters)
 ###########################################
+tool_name = "get_time_of_day"
+tool_description = "Retrieve the current time of day in Hour-Minute-Second format for a specified time zone. Time zones should be written in standard formats such as UTC, US/Pacific, Europe/London."
+tool_parameters = [
+    {"name": "time_zone", "type": "str", "description": "The time zone to get the current time for, such as UTC, US/Pacific, Europe/London."}
+]
+time_of_day_tool = TimeOfDayTool(tool_name, tool_description, tool_parameters)
+
+###########################################
+
+
+elevenlabs_tts_tool_name = "elevenlabs_tts"
+elevenlabs_tts_tool_description = """Converts text to speech using ElevenLabs API.
+   Use this tool to generate audio output from given text."""
+elevenlabs_tts_tool_parameters = [
+    {"name": "text", "type": "str", "description": "The text to convert to speech."}
+]
+elevenlabs_tts_tool = ElevenLabsTTSTool(elevenlabs_tts_tool_name, elevenlabs_tts_tool_description, elevenlabs_tts_tool_parameters)
 
 #3. Assign Tools and Ask Claude
-tool_user = ToolUser([addition_tool, search_tool, file_write_tool, file_read_tool, create_folder_tool, file_copy_tool, start_cmd_tool, miniconda_start_tool, cmd_interaction_tool, 
-                      create_audio_file_tool, play_audio_file_tool, python_file_review_tool, pip_install_tool, solution_verification_tool])
+tool_user = ToolUser([addition_tool, file_write_tool, file_read_tool, create_folder_tool, file_copy_tool, start_cmd_tool, miniconda_start_tool, cmd_interaction_tool, create_audio_file_tool, play_audio_file_tool, python_file_review_tool, pip_install_tool, solution_verification_tool, search_tool, time_of_day_tool,elevenlabs_tts_tool]) # 
 
 if len(sys.argv) > 1:
     query = ' '.join(sys.argv[1:])
